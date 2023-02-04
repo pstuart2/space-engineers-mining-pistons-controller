@@ -51,7 +51,8 @@ namespace IngameScript
 			TagParser.SEARCH_TAG = SEARCH_TAG;
 
 			Runtime.UpdateFrequency = UpdateFrequency.Update10;
-			GetPistonGroups();
+			
+			ScanForBlocks();
 		}
 		
 		public void Save()
@@ -69,10 +70,10 @@ namespace IngameScript
 
 		public void Main(string argument, UpdateType updateSource)
 		{
-			if (loopCounter == 0)
-			{
-				Refresh();
-			}
+			//if (loopCounter == 0)
+			//{
+			//	Refresh();
+			//}
 
 			RunCommands(argument, updateSource);
 
@@ -86,9 +87,10 @@ namespace IngameScript
 			else { loopCounter++; }
 		}
 
-		private void Refresh()
+		private void ScanForBlocks()
 		{
-			foreach(var pg in pistonGroups.Values)
+			GetPistonGroups();
+			foreach (var pg in pistonGroups.Values)
 			{
 				pg.Refresh(GridTerminalSystem);
 			}
@@ -111,8 +113,6 @@ namespace IngameScript
 					pistonGroups.Add(tag.SortIndex, new PistonGroup(tag, SEARCH_TAG));
 				}
 			}
-
-			Refresh();
 		}
 
 		private bool ShouldTrackPiston(IMyExtendedPistonBase piston)
