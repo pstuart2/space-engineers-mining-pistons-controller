@@ -1,5 +1,8 @@
 ﻿R e a d m e
 -----------
 
-In this file you can include any instructions or other comments you want to have injected onto the 
-top of your final script. You can safely delete this file if you do not want any such comments.
+## Commands
+* rescan - Rebuild the piston groups
+* start - Starts the drilling and extending of pistons
+* stop - Stops the script where it is and turns off the drills
+* retract - Retracts the pistons

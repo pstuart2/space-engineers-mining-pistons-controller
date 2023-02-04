@@ -23,24 +23,12 @@ namespace IngameScript
 	partial class Program : MyGridProgram
 	{
 		#region mdk preserve
-		public static string TAG = "DEEPDRILL";
+		public static string SEARCH_TAG = "MPC";
 
 		public static int SECONDS_BETWEEN_CONTROL_SEARCHES = 20;
 		public static float DRILL_PUSH_SPEED = 0.025f;
 		public static float RETRACT_SPEED = 0.75F;
 
-		// TODO: Better way to get this
-		public static List<PistonGroup> pistons = new List<PistonGroup>()
-		{
-			new PistonGroup("Set v1", "VPLT;VPRT", true),
-			new PistonGroup("Set v2", "VPLB;VPRB", true),
-			new PistonGroup("Set 1", "DP01L;DP01R", false),
-			new PistonGroup("Set 2", "DP02L;DP02R", false),
-			new PistonGroup("Set 3", "DP03L;DP03R", false),
-			new PistonGroup("Set 4", "DP04L;DP04R", false),
-			new PistonGroup("Set 5", "DP05L;DP05R", false),
-			new PistonGroup("Set 6", "DP06L;DP06R", false),
-		};
 		#endregion
 
 		enum State { Stopped, Starting, Drilling, Finishing, Retracting };
@@ -49,6 +37,7 @@ namespace IngameScript
 		static DateTime lastRunTime = new DateTime();
 		static DateTime stateStartTime = new DateTime();
 
+		static SortedDictionary<int, PistonGroup> pistonGroups = new SortedDictionary<int, PistonGroup>();
 		static List<IMyTextPanel> displayPanels = new List<IMyTextPanel>();
 		static List<IMyShipDrill> drills = new List<IMyShipDrill>();
 
@@ -59,7 +48,10 @@ namespace IngameScript
 
 		public Program()
 		{
+			TagParser.SEARCH_TAG = SEARCH_TAG;
+
 			Runtime.UpdateFrequency = UpdateFrequency.Update10;
+			GetPistonGroups();
 		}
 		
 		public void Save()
@@ -96,16 +88,41 @@ namespace IngameScript
 
 		private void Refresh()
 		{
-			// TODO: Add functional piston check
-			// TODO: Add IsSameConstructAs(Me) check
-			pistons.ForEach((p) => p.Refresh(GridTerminalSystem));
+			foreach(var pg in pistonGroups.Values)
+			{
+				pg.Refresh(GridTerminalSystem);
+			}
+			
 			GridTerminalSystem.GetBlocksOfType(displayPanels, ShouldTrack);
 			GridTerminalSystem.GetBlocksOfType(drills, ShouldTrack);
 		}
 
+		private void GetPistonGroups()
+		{
+			pistonGroups.Clear();
+
+			List<IMyExtendedPistonBase> pistons = new List<IMyExtendedPistonBase>();
+			GridTerminalSystem.GetBlocksOfType(pistons, ShouldTrackPiston);
+			foreach(var piston in pistons)
+			{
+				var tag = TagParser.ParsePistonTag(piston.CustomName);
+				if(!pistonGroups.ContainsKey(tag.SortIndex))
+				{
+					pistonGroups.Add(tag.SortIndex, new PistonGroup(tag, SEARCH_TAG));
+				}
+			}
+
+			Refresh();
+		}
+
+		private bool ShouldTrackPiston(IMyExtendedPistonBase piston)
+		{
+			return TagParser.ContainsPistonTag(piston.CustomName);
+		}
+
 		private bool ShouldTrack(IMyFunctionalBlock block)
 		{
-			return block.IsSameConstructAs(Me) && block.CustomName.Contains($"[{TAG}")
+			return block.IsSameConstructAs(Me) && block.CustomName.Contains($"[{SEARCH_TAG}")
 				&& block.IsFunctional;
 		}
 
@@ -118,6 +135,11 @@ namespace IngameScript
 
 			switch(argument.ToLower())
 			{
+				case "rescan":
+					{
+						GetPistonGroups();
+						break;
+					}
 				case "start":
 					{
 						Start();
@@ -166,14 +188,21 @@ namespace IngameScript
 		void Stop()
 		{
 			ChangeState(State.Stopped);
-			pistons.ForEach((pg) => pg.Stop());
+			foreach (var pg in pistonGroups.Values)
+			{
+				pg.Stop();
+			}
 			DrillsOff();
 		}
 
 		void Retract()
 		{
 			ChangeState(State.Retracting);
-			pistons.ForEach((pg) => pg.Retract(RETRACT_SPEED));
+			foreach(var pg in pistonGroups.Values)
+			{
+				pg.Retract(RETRACT_SPEED);
+			}
+
 			DrillsOff();
 		}
 
@@ -187,13 +216,18 @@ namespace IngameScript
 			drills.ForEach((d) => d.ApplyAction("OnOff_Off"));
 		}
 
+		bool IsSecondsElapsed(int seconds)
+		{
+			return lastRunTime - stateStartTime >= TimeSpan.FromSeconds(seconds);
+		}
+
 		void Update()
 		{
 			switch(CurrentState)
 			{
 				case State.Starting:
 					{
-						if(drills.All((d) => d.IsWorking) && lastRunTime - stateStartTime >= TimeSpan.FromSeconds(2))
+						if(drills.All((d) => d.IsWorking) && IsSecondsElapsed(2))
 						{
 							Drill();
 						}
@@ -207,7 +241,7 @@ namespace IngameScript
 							return;
 						}
 
-						foreach (var pg in pistons)
+						foreach (var pg in pistonGroups.Values)
 						{
 							if (!pg.IsDrillingComplete())
 							{
@@ -216,7 +250,7 @@ namespace IngameScript
 							}
 						}
 
-						if (pistons.All((pg) => pg.IsDrillingComplete()))
+						if (pistonGroups.Values.All((pg) => pg.IsDrillingComplete()))
 						{
 							Finishing();
 						}
@@ -226,7 +260,7 @@ namespace IngameScript
 
 				case State.Finishing:
 					{
-						if(lastRunTime - stateStartTime >= TimeSpan.FromSeconds(10))
+						if(IsSecondsElapsed(10))
 						{
 							Retract();
 						}
@@ -236,7 +270,7 @@ namespace IngameScript
 
 				case State.Retracting:
 					{
-						if (pistons.All((pg) => pg.IsRetracted()))
+						if (pistonGroups.Values.All((pg) => pg.IsRetracted()))
 						{
 							Stop();
 						}
@@ -273,9 +307,9 @@ namespace IngameScript
 			sb.Append("\n\nDrill State: ");
 			sb.Append(GetDrillStateText());
 
-			foreach (var pg in pistons)
+			foreach (var pg in pistonGroups.Values)
 			{
-				sb.Append("\n\n");
+				sb.Append("\n");
 				sb.Append(pg.GetStatus());
 			}
 
@@ -287,9 +321,12 @@ namespace IngameScript
 
 		void WriteControlText()
 		{
-			StringBuilder sb = new StringBuilder($"Status: {CurrentState}\n\n");
+			StringBuilder sb = new StringBuilder($"{CurrentState}\n\n");
 
-			sb.Append("Paul's Drilling Script " + statusString[loopCounter % 4] + "\n======================\n\n");
+			sb.Append("Paul's Drilling Script " + statusString[loopCounter % 4] + "\n======================");
+			sb.Append($"\n\nPistonGroups: {pistonGroups.Count}");
+			sb.Append($"\nDrills: {drills.Count}");
+			sb.Append($"\nDisplays: {displayPanels.Count}");
 
 			Echo(sb.ToString());
 		}
