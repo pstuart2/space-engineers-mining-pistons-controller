@@ -34,6 +34,9 @@ namespace IngameScript
 
 			public static string SEARCH_TAG;
 
+			public float UpperPistonLimit { get; set; }
+			public float LowerPistonLimit { get; set; }
+
 			List<IMyExtendedPistonBase> pistons = new List<IMyExtendedPistonBase>();
 
 			public static int ParseIndex(string name)
@@ -62,6 +65,8 @@ namespace IngameScript
 				grid.GetBlocksOfType(pistons, ShouldTrackPiston);
 
 				ParseConfig(ini);
+
+				UpdatePistonSettings();
 			}
 
 			private void SetDefaultName()
@@ -82,6 +87,9 @@ namespace IngameScript
 					IsInverted = outBool;
 				}
 
+				LowerPistonLimit = ini.Get(SEARCH_TAG, "LowerPistonLimit").ToSingle(LowerPistonLimit);
+				UpperPistonLimit = ini.Get(SEARCH_TAG, "UpperPistonLimit").ToSingle(UpperPistonLimit);
+
 				string outString;
 				if (ini.Get(PistonTag, "Name").TryGetString(out outString))
 				{
@@ -90,6 +98,15 @@ namespace IngameScript
 				{
 					SetDefaultName();
 				}
+			}
+
+			private void UpdatePistonSettings()
+			{
+				pistons.ForEach((p) =>
+				{
+					p.SetValueFloat("LowerLimit", LowerPistonLimit);
+					p.SetValueFloat("UpperLimit", UpperPistonLimit);
+				});
 			}
 
 			public void Retract(float velocity)
@@ -179,7 +196,7 @@ namespace IngameScript
 			public string GetStatus()
 			{
 				var first = pistons[0];
-				return $"{Name} ({pistons.Count}) {first.CurrentPosition:F1}m ({GetPrecentageCompleteFormatted()}) - {PistonDrillStatus()}...";
+				return string.Format("{0} ({1})\n{2,5:F1}m {3,5:P0} - {4}", Name, pistons.Count, first.CurrentPosition, GetPrecentageComplete(), PistonDrillStatus());
 			}
 		}
 	}

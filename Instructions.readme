@@ -8,23 +8,21 @@
 * retract - Retracts the pistons
 
 ## Program Block Custom Data
-```
+```ini
 [DeepDriller]
 DrillPushSpeed=0.025
 RetractSpeed=0.75
 AllDrills=false
+
+[DeepDriller:0]
+Name=Set v1
+Inverted=true
 ```
 
-# Piston
-`[DeepDriller:<SequencePosition>]`
+# Pistons
+* Add the tag to the name with the piston sequence position
+  * `[DeepDriller.<SequencePosition>]`
+* Multiple pistons can be added with the same sequence positon and they will be controlled together
 
-## Piston Custom Data
-```
-[DeepDriller]
-; If multiple pistons are on the same sequence, these only need
-; to be set in one of them.
-SetName=Set v1
-IsInverted=true
-```
-## Drills CustomData or in Name (If not set to all drills)
+## Drills
 `[DeepDriller]`

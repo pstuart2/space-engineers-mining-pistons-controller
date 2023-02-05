@@ -30,6 +30,9 @@ namespace IngameScript
 
 		float CFG_DrillPushSpeed = 0.025f;
 		float CFG_RetractSpeed = 0.75F;
+		float CFG_UpperPistonLimit = 10.0f;
+		float CFG_LowerPistonLimit = 0.0f;
+
 		bool CFG_AllDrills = false;
 
 		enum State { Stopped, Starting, Drilling, Finishing, Retracting };
@@ -65,12 +68,15 @@ namespace IngameScript
 		public void Main(string argument, UpdateType updateSource)
 		{
 			RunCommands(argument, updateSource);
-
 			Update();
 			UpdateDisplays();
-
 			WriteControlText();
 
+			FinishLoop();
+		}
+
+		private void FinishLoop()
+		{
 			lastRunTime += Runtime.TimeSinceLastRun;
 			if (loopCounter >= refreshLoopCount) { loopCounter = 0; }
 			else { loopCounter++; }
@@ -82,6 +88,8 @@ namespace IngameScript
 
 			CFG_DrillPushSpeed = MyIni.Get(SEARCH_TAG, "DrillPushSpeed").ToSingle(0.025f);
 			CFG_RetractSpeed = MyIni.Get(SEARCH_TAG, "RetractSpeed").ToSingle(0.025f);
+			CFG_LowerPistonLimit = MyIni.Get(SEARCH_TAG, "LowerPistonLimit").ToSingle(0.0f);
+			CFG_UpperPistonLimit = MyIni.Get(SEARCH_TAG, "UpperPistonLimit").ToSingle(10.0f);
 
 			CFG_AllDrills = MyIni.Get(SEARCH_TAG, "AllDrills").ToBoolean();
 		}
@@ -110,7 +118,11 @@ namespace IngameScript
 				var index = PistonGroup.ParseIndex(piston.CustomName);
 				if (!pistonGroups.ContainsKey(index))
 				{
-					pistonGroups.Add(index, new PistonGroup(index));
+					pistonGroups.Add(index, new PistonGroup(index)
+					{
+						UpperPistonLimit = CFG_UpperPistonLimit,
+						LowerPistonLimit = CFG_LowerPistonLimit,
+					});
 				}
 			}
 		}
@@ -143,6 +155,7 @@ namespace IngameScript
 			{
 				case "rescan":
 					{
+						Stop();
 						LoadConfig();
 						ScanForBlocks();
 						break;
@@ -199,6 +212,7 @@ namespace IngameScript
 			{
 				pg.Stop();
 			}
+
 			DrillsOff();
 		}
 
@@ -311,7 +325,7 @@ namespace IngameScript
 		{
 			StringBuilder sb = new StringBuilder($"Status: {CurrentState}");
 
-			sb.Append("\n\nDrill State: ");
+			sb.Append("\n\nDrills: ");
 			sb.Append(GetDrillStateText());
 
 			foreach (var pg in pistonGroups.Values)
