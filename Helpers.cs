@@ -22,34 +22,17 @@ namespace IngameScript
 {
 	partial class Program
 	{
-		public class PistonTag
+		public static class Helpers
 		{
-			public string Name { get; }
-
-			public bool IsInverted { get; }
-
-			public int SortIndex { get; }
-
-			public PistonTag(string name, int sortIndex, bool isInverted)
+			public static MyIni LoadIni(string iniData)
 			{
-				Name = name;
-				SortIndex = sortIndex;
-				IsInverted = isInverted;
-			}
+				MyIni ini = new MyIni();
+				MyIniParseResult result;
 
-			public override bool Equals(object obj)
-			{
-				return (obj as PistonTag).Name == Name;
-			}
+				if (!ini.TryParse(iniData, out result))
+					throw new Exception(result.ToString());
 
-			public override int GetHashCode()
-			{
-				return Name.GetHashCode();
-			}
-
-			public override string ToString()
-			{
-				return $"{Name}:{SortIndex}:{IsInverted}";
+				return ini;
 			}
 		}
 	}

@@ -24,27 +24,72 @@ namespace IngameScript
 	{
 		public class PistonGroup
 		{
-			public PistonTag Tag { get; }
+			public int Index { get; }
 
-			private string SearchTag;
+			public string Name { get; private set; }
+
+			public string PistonTag { get; private set; }
+
+			public bool IsInverted { get; private set; }
+
+			public static string SEARCH_TAG;
 
 			List<IMyExtendedPistonBase> pistons = new List<IMyExtendedPistonBase>();
 
-			public PistonGroup(PistonTag tag, string searchTag)
+			public static int ParseIndex(string name)
 			{
-				Tag = tag;
-				SearchTag = searchTag;
+				var tagString = $"[{SEARCH_TAG}.";
+				var startIndex = name.IndexOf(tagString) + tagString.Length;
+				var endIndex = name.IndexOf(']', startIndex);
+
+				var indexString = name.Substring(startIndex, endIndex - startIndex);
+
+				return int.Parse(indexString);
 			}
 
-			public void Refresh(IMyGridTerminalSystem grid)
+			public PistonGroup(int index)
 			{
+				Index = index;
+				PistonTag = $"{SEARCH_TAG}.{Index}";
+				SetDefaultName();
+			}
+
+			public void Refresh(IMyGridTerminalSystem grid, MyIni ini)
+			{
+				SetDefaultName();
 				pistons.Clear();
+				
 				grid.GetBlocksOfType(pistons, ShouldTrackPiston);
+
+				ParseConfig(ini);
+			}
+
+			private void SetDefaultName()
+			{
+				Name = $"Set.{Index}" + (IsInverted ? "i" : "");
 			}
 
 			private bool ShouldTrackPiston(IMyExtendedPistonBase piston)
 			{
-				return piston.CustomName.Contains($"[{SearchTag}:P:{Tag.Name}:");
+				return piston.CustomName.Contains($"[{PistonTag}]");
+			}
+
+			private void ParseConfig(MyIni ini)
+			{
+				bool outBool;
+				if (ini.Get(PistonTag, "Inverted").TryGetBoolean(out outBool))
+				{
+					IsInverted = outBool;
+				}
+
+				string outString;
+				if (ini.Get(PistonTag, "Name").TryGetString(out outString))
+				{
+					Name = outString;
+				} else
+				{
+					SetDefaultName();
+				}
 			}
 
 			public void Retract(float velocity)
@@ -52,7 +97,7 @@ namespace IngameScript
 				pistons.ForEach((p) =>
 				{
 					p.Velocity = velocity;
-					if (Tag.IsInverted)
+					if (IsInverted)
 					{
 						p.Extend();
 					} else
@@ -67,7 +112,7 @@ namespace IngameScript
 				pistons.ForEach((p) =>
 				{
 					p.Velocity = velocity;
-					if (Tag.IsInverted)
+					if (IsInverted)
 					{
 						p.Retract();
 					}
@@ -85,25 +130,25 @@ namespace IngameScript
 
 			public bool IsDrilling()
 			{
-				return Tag.IsInverted ? pistons[0].Status == PistonStatus.Retracting : pistons[0].Status == PistonStatus.Extending;
+				return IsInverted ? pistons[0].Status == PistonStatus.Retracting : pistons[0].Status == PistonStatus.Extending;
 			}
 
 			public bool IsDrillingComplete()
 			{
 				var first = pistons[0];
-				return Tag.IsInverted ? first.CurrentPosition == 0.0f : first.CurrentPosition == first.MaxLimit;
+				return IsInverted ? first.CurrentPosition == 0.0f : first.CurrentPosition == first.MaxLimit;
 			}
 
 			public bool IsRetracted()
 			{
 				var first = pistons[0];
-				return Tag.IsInverted ? first.CurrentPosition == first.MaxLimit : first.CurrentPosition == 0.0f;
+				return IsInverted ? first.CurrentPosition == first.MaxLimit : first.CurrentPosition == 0.0f;
 			}
 
 			public float GetPrecentageComplete()
 			{
 				var first = pistons[0];
-				if (Tag.IsInverted)
+				if (IsInverted)
 				{
 					return (first.MaxLimit - first.CurrentPosition) / first.MaxLimit;
 				}
@@ -134,7 +179,7 @@ namespace IngameScript
 			public string GetStatus()
 			{
 				var first = pistons[0];
-				return $"{Tag.Name}({pistons.Count}) {first.CurrentPosition:F1}m ({GetPrecentageCompleteFormatted()}) - {PistonDrillStatus()}...";
+				return $"{Name} ({pistons.Count}) {first.CurrentPosition:F1}m ({GetPrecentageCompleteFormatted()}) - {PistonDrillStatus()}...";
 			}
 		}
 	}

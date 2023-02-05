@@ -23,13 +23,14 @@ namespace IngameScript
 	partial class Program : MyGridProgram
 	{
 		#region mdk preserve
-		public static string SEARCH_TAG = "MPC";
-
-		public static int SECONDS_BETWEEN_CONTROL_SEARCHES = 20;
-		public static float DRILL_PUSH_SPEED = 0.025f;
-		public static float RETRACT_SPEED = 0.75F;
-
+		public static string SEARCH_TAG = "DeepDriller";
 		#endregion
+
+		MyIni MyIni;
+
+		float CFG_DrillPushSpeed = 0.025f;
+		float CFG_RetractSpeed = 0.75F;
+		bool CFG_AllDrills = false;
 
 		enum State { Stopped, Starting, Drilling, Finishing, Retracting };
 		State CurrentState = State.Stopped;
@@ -41,40 +42,28 @@ namespace IngameScript
 		static List<IMyTextPanel> displayPanels = new List<IMyTextPanel>();
 		static List<IMyShipDrill> drills = new List<IMyShipDrill>();
 
+		static int SECONDS_BETWEEN_LOOP_COUNTER_RESET = 20;
 		int loopCounter = 0;
-		int refreshLoopCount = 6 * SECONDS_BETWEEN_CONTROL_SEARCHES;
+		int refreshLoopCount = 6 * SECONDS_BETWEEN_LOOP_COUNTER_RESET;
 
 		string[] statusString = { "/", "-", "\\", "|" };
 
 		public Program()
 		{
-			TagParser.SEARCH_TAG = SEARCH_TAG;
+			PistonGroup.SEARCH_TAG = SEARCH_TAG;
+
+			LoadConfig();
+			ScanForBlocks();
 
 			Runtime.UpdateFrequency = UpdateFrequency.Update10;
-			
-			ScanForBlocks();
 		}
-		
+
 		public void Save()
 		{
-			// Called when the program needs to save its state. Use
-			// this method to save your state to the Storage field
-			// or some other means. 
-			// 
-			// This method is optional and can be removed if not
-			// needed.
-
-			// TODO: Save isDrilling
-			
 		}
 
 		public void Main(string argument, UpdateType updateSource)
 		{
-			//if (loopCounter == 0)
-			//{
-			//	Refresh();
-			//}
-
 			RunCommands(argument, updateSource);
 
 			Update();
@@ -87,16 +76,26 @@ namespace IngameScript
 			else { loopCounter++; }
 		}
 
+		private void LoadConfig()
+		{
+			MyIni = Helpers.LoadIni(Me.CustomData);
+
+			CFG_DrillPushSpeed = MyIni.Get(SEARCH_TAG, "DrillPushSpeed").ToSingle(0.025f);
+			CFG_RetractSpeed = MyIni.Get(SEARCH_TAG, "RetractSpeed").ToSingle(0.025f);
+
+			CFG_AllDrills = MyIni.Get(SEARCH_TAG, "AllDrills").ToBoolean();
+		}
+
 		private void ScanForBlocks()
 		{
 			GetPistonGroups();
 			foreach (var pg in pistonGroups.Values)
 			{
-				pg.Refresh(GridTerminalSystem);
+				pg.Refresh(GridTerminalSystem, MyIni);
 			}
 			
 			GridTerminalSystem.GetBlocksOfType(displayPanels, ShouldTrack);
-			GridTerminalSystem.GetBlocksOfType(drills, ShouldTrack);
+			GridTerminalSystem.GetBlocksOfType(drills, ShouldTrackDrill);
 		}
 
 		private void GetPistonGroups()
@@ -105,28 +104,35 @@ namespace IngameScript
 
 			List<IMyExtendedPistonBase> pistons = new List<IMyExtendedPistonBase>();
 			GridTerminalSystem.GetBlocksOfType(pistons, ShouldTrackPiston);
+			
 			foreach(var piston in pistons)
 			{
-				var tag = TagParser.ParsePistonTag(piston.CustomName);
-				if(!pistonGroups.ContainsKey(tag.SortIndex))
+				var index = PistonGroup.ParseIndex(piston.CustomName);
+				if (!pistonGroups.ContainsKey(index))
 				{
-					pistonGroups.Add(tag.SortIndex, new PistonGroup(tag, SEARCH_TAG));
+					pistonGroups.Add(index, new PistonGroup(index));
 				}
 			}
 		}
 
 		private bool ShouldTrackPiston(IMyExtendedPistonBase piston)
 		{
-			return TagParser.ContainsPistonTag(piston.CustomName);
+			return piston.CustomName.Contains($"[{SEARCH_TAG}.");
+		}
+
+		private bool ShouldTrackDrill(IMyShipDrill drill)
+		{
+			return CFG_AllDrills || ShouldTrack(drill);
 		}
 
 		private bool ShouldTrack(IMyFunctionalBlock block)
 		{
-			return block.IsSameConstructAs(Me) && block.CustomName.Contains($"[{SEARCH_TAG}")
-				&& block.IsFunctional;
+			return block.IsSameConstructAs(Me)
+				&& block.IsFunctional
+				&& block.CustomName.Contains($"[{SEARCH_TAG}]");
 		}
 
-		void RunCommands(string argument, UpdateType updateSource)
+		private void RunCommands(string argument, UpdateType updateSource)
 		{
 			if (updateSource == UpdateType.Update10)
 			{
@@ -137,7 +143,8 @@ namespace IngameScript
 			{
 				case "rescan":
 					{
-						GetPistonGroups();
+						LoadConfig();
+						ScanForBlocks();
 						break;
 					}
 				case "start":
@@ -180,7 +187,7 @@ namespace IngameScript
 			ChangeState(State.Drilling);
 		}
 
-		void Finishing()
+		void Finish()
 		{
 			ChangeState(State.Finishing);
 		}
@@ -200,7 +207,7 @@ namespace IngameScript
 			ChangeState(State.Retracting);
 			foreach(var pg in pistonGroups.Values)
 			{
-				pg.Retract(RETRACT_SPEED);
+				pg.Retract(CFG_RetractSpeed);
 			}
 
 			DrillsOff();
@@ -245,14 +252,14 @@ namespace IngameScript
 						{
 							if (!pg.IsDrillingComplete())
 							{
-								pg.Extend(DRILL_PUSH_SPEED);
+								pg.Extend(CFG_DrillPushSpeed);
 								break;
 							}
 						}
 
 						if (pistonGroups.Values.All((pg) => pg.IsDrillingComplete()))
 						{
-							Finishing();
+							Finish();
 						}
 
 						break;

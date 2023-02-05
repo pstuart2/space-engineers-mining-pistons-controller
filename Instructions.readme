@@ -6,3 +6,25 @@
 * start - Starts the drilling and extending of pistons
 * stop - Stops the script where it is and turns off the drills
 * retract - Retracts the pistons
+
+## Program Block Custom Data
+```
+[DeepDriller]
+DrillPushSpeed=0.025
+RetractSpeed=0.75
+AllDrills=false
+```
+
+# Piston
+`[DeepDriller:<SequencePosition>]`
+
+## Piston Custom Data
+```
+[DeepDriller]
+; If multiple pistons are on the same sequence, these only need
+; to be set in one of them.
+SetName=Set v1
+IsInverted=true
+```
+## Drills CustomData or in Name (If not set to all drills)
+`[DeepDriller]`
