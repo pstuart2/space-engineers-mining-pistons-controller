@@ -23,37 +23,39 @@ namespace IngameScript
 	partial class Program : MyGridProgram
 	{
 		#region mdk preserve
-		public static string SEARCH_TAG = "DeepDriller";
+		static string SEARCH_TAG = "DeepDriller";
 		#endregion
 
-		MyIni MyIni;
+		static MyIni CB_IniConfig;
 
-		float CFG_DrillPushSpeed = 0.025f;
-		float CFG_RetractSpeed = 0.75F;
-		float CFG_UpperPistonLimit = 10.0f;
-		float CFG_LowerPistonLimit = 0.0f;
+		static float CFG_DrillPushSpeed = 0.025f;
+		static float CFG_RetractSpeed = 0.75F;
+		static float CFG_UpperPistonLimit = 10.0f;
+		static float CFG_LowerPistonLimit = 0.0f;
 
-		bool CFG_AllDrills = false;
-
-		enum State { Stopped, Starting, Drilling, Finishing, Retracting };
-		State CurrentState = State.Stopped;
+		static bool CFG_AllDrills = false;
 
 		static DateTime lastRunTime = new DateTime();
 		static DateTime stateStartTime = new DateTime();
 
 		static SortedDictionary<int, PistonGroup> pistonGroups = new SortedDictionary<int, PistonGroup>();
 		static List<IMyTextPanel> displayPanels = new List<IMyTextPanel>();
-		static List<IMyShipDrill> drills = new List<IMyShipDrill>();
 
 		static int SECONDS_BETWEEN_LOOP_COUNTER_RESET = 20;
+
+		DrillController drillController;
+
 		int loopCounter = 0;
 		int refreshLoopCount = 6 * SECONDS_BETWEEN_LOOP_COUNTER_RESET;
 
 		string[] statusString = { "/", "-", "\\", "|" };
 
+		enum State { Stopped, Starting, Drilling, Finishing, Retracting };
+		State CurrentState = State.Stopped;
+
 		public Program()
 		{
-			PistonGroup.SEARCH_TAG = SEARCH_TAG;
+			drillController = new DrillController(Me);
 
 			LoadConfig();
 			ScanForBlocks();
@@ -84,14 +86,14 @@ namespace IngameScript
 
 		private void LoadConfig()
 		{
-			MyIni = Helpers.LoadIni(Me.CustomData);
+			CB_IniConfig = Helpers.LoadIni(Me.CustomData);
 
-			CFG_DrillPushSpeed = MyIni.Get(SEARCH_TAG, "DrillPushSpeed").ToSingle(0.025f);
-			CFG_RetractSpeed = MyIni.Get(SEARCH_TAG, "RetractSpeed").ToSingle(0.025f);
-			CFG_LowerPistonLimit = MyIni.Get(SEARCH_TAG, "LowerPistonLimit").ToSingle(0.0f);
-			CFG_UpperPistonLimit = MyIni.Get(SEARCH_TAG, "UpperPistonLimit").ToSingle(10.0f);
+			CFG_DrillPushSpeed = CB_IniConfig.Get(SEARCH_TAG, "DrillPushSpeed").ToSingle(CFG_DrillPushSpeed);
+			CFG_RetractSpeed = CB_IniConfig.Get(SEARCH_TAG, "RetractSpeed").ToSingle(CFG_RetractSpeed);
+			CFG_LowerPistonLimit = CB_IniConfig.Get(SEARCH_TAG, "LowerPistonLimit").ToSingle(CFG_LowerPistonLimit);
+			CFG_UpperPistonLimit = CB_IniConfig.Get(SEARCH_TAG, "UpperPistonLimit").ToSingle(CFG_UpperPistonLimit);
 
-			CFG_AllDrills = MyIni.Get(SEARCH_TAG, "AllDrills").ToBoolean();
+			CFG_AllDrills = CB_IniConfig.Get(SEARCH_TAG, "AllDrills").ToBoolean();
 		}
 
 		private void ScanForBlocks()
@@ -99,11 +101,11 @@ namespace IngameScript
 			GetPistonGroups();
 			foreach (var pg in pistonGroups.Values)
 			{
-				pg.Refresh(GridTerminalSystem, MyIni);
+				pg.Refresh(GridTerminalSystem);
 			}
 			
+			drillController.Refresh(GridTerminalSystem);
 			GridTerminalSystem.GetBlocksOfType(displayPanels, ShouldTrack);
-			GridTerminalSystem.GetBlocksOfType(drills, ShouldTrackDrill);
 		}
 
 		private void GetPistonGroups()
@@ -118,24 +120,18 @@ namespace IngameScript
 				var index = PistonGroup.ParseIndex(piston.CustomName);
 				if (!pistonGroups.ContainsKey(index))
 				{
-					pistonGroups.Add(index, new PistonGroup(index)
-					{
-						UpperPistonLimit = CFG_UpperPistonLimit,
-						LowerPistonLimit = CFG_LowerPistonLimit,
-					});
+					pistonGroups.Add(index, new PistonGroup(index));
 				}
 			}
 		}
 
 		private bool ShouldTrackPiston(IMyExtendedPistonBase piston)
 		{
-			return piston.CustomName.Contains($"[{SEARCH_TAG}.");
+			return piston.IsSameConstructAs(Me)
+				&& piston.IsFunctional
+				&& piston.CustomName.Contains($"[{SEARCH_TAG}.");
 		}
-
-		private bool ShouldTrackDrill(IMyShipDrill drill)
-		{
-			return CFG_AllDrills || ShouldTrack(drill);
-		}
+		
 
 		private bool ShouldTrack(IMyFunctionalBlock block)
 		{
@@ -191,7 +187,7 @@ namespace IngameScript
 			if (CurrentState == State.Stopped)
 			{
 				ChangeState(State.Starting);
-				DrillsOn();
+				drillController.TurnOn();
 			}
 		}
 
@@ -213,7 +209,7 @@ namespace IngameScript
 				pg.Stop();
 			}
 
-			DrillsOff();
+			drillController.TurnOff();
 		}
 
 		void Retract()
@@ -221,20 +217,10 @@ namespace IngameScript
 			ChangeState(State.Retracting);
 			foreach(var pg in pistonGroups.Values)
 			{
-				pg.Retract(CFG_RetractSpeed);
+				pg.Retract();
 			}
 
-			DrillsOff();
-		}
-
-		void DrillsOn()
-		{
-			drills.ForEach((d) => d.ApplyAction("OnOff_On"));
-		}
-
-		void DrillsOff()
-		{
-			drills.ForEach((d) => d.ApplyAction("OnOff_Off"));
+			drillController.TurnOff();
 		}
 
 		bool IsSecondsElapsed(int seconds)
@@ -248,7 +234,7 @@ namespace IngameScript
 			{
 				case State.Starting:
 					{
-						if(drills.All((d) => d.IsWorking) && IsSecondsElapsed(2))
+						if(IsSecondsElapsed(2))
 						{
 							Drill();
 						}
@@ -266,7 +252,7 @@ namespace IngameScript
 						{
 							if (!pg.IsDrillingComplete())
 							{
-								pg.Extend(CFG_DrillPushSpeed);
+								pg.Extend();
 								break;
 							}
 						}
@@ -306,27 +292,12 @@ namespace IngameScript
 			return loopCounter % x == 0;
 		}
 
-		string GetDrillStateText()
-		{
-			if (drills.All((d) => !d.Enabled))
-			{
-				return "All Off";
-			}
-
-			if (drills.All((d) => d.Enabled))
-			{
-				return "All On";
-			}
-
-			return "Mixed";
-		}
-
 		void UpdateDisplays()
 		{
 			StringBuilder sb = new StringBuilder($"Status: {CurrentState}");
 
 			sb.Append("\n\nDrills: ");
-			sb.Append(GetDrillStateText());
+			sb.Append(drillController.GetStateText());
 
 			foreach (var pg in pistonGroups.Values)
 			{
@@ -346,7 +317,7 @@ namespace IngameScript
 
 			sb.Append("Paul's Drilling Script " + statusString[loopCounter % 4] + "\n======================");
 			sb.Append($"\n\nPistonGroups: {pistonGroups.Count}");
-			sb.Append($"\nDrills: {drills.Count}");
+			sb.Append($"\nDrills: {drillController.Count}");
 			sb.Append($"\nDisplays: {displayPanels.Count}");
 
 			Echo(sb.ToString());

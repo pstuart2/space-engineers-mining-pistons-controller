@@ -32,10 +32,8 @@ namespace IngameScript
 
 			public bool IsInverted { get; private set; }
 
-			public static string SEARCH_TAG;
-
-			public float UpperPistonLimit { get; set; }
-			public float LowerPistonLimit { get; set; }
+			public float UpperPistonLimit { get; private set; } = CFG_UpperPistonLimit;
+			public float LowerPistonLimit { get; private set; } = CFG_LowerPistonLimit;
 
 			List<IMyExtendedPistonBase> pistons = new List<IMyExtendedPistonBase>();
 
@@ -57,14 +55,14 @@ namespace IngameScript
 				SetDefaultName();
 			}
 
-			public void Refresh(IMyGridTerminalSystem grid, MyIni ini)
+			public void Refresh(IMyGridTerminalSystem grid)
 			{
 				SetDefaultName();
 				pistons.Clear();
 				
 				grid.GetBlocksOfType(pistons, ShouldTrackPiston);
 
-				ParseConfig(ini);
+				ParseConfig();
 
 				UpdatePistonSettings();
 			}
@@ -79,19 +77,19 @@ namespace IngameScript
 				return piston.CustomName.Contains($"[{PistonTag}]");
 			}
 
-			private void ParseConfig(MyIni ini)
+			private void ParseConfig()
 			{
 				bool outBool;
-				if (ini.Get(PistonTag, "Inverted").TryGetBoolean(out outBool))
+				if (CB_IniConfig.Get(PistonTag, "Inverted").TryGetBoolean(out outBool))
 				{
 					IsInverted = outBool;
 				}
 
-				LowerPistonLimit = ini.Get(SEARCH_TAG, "LowerPistonLimit").ToSingle(LowerPistonLimit);
-				UpperPistonLimit = ini.Get(SEARCH_TAG, "UpperPistonLimit").ToSingle(UpperPistonLimit);
+				LowerPistonLimit = CB_IniConfig.Get(SEARCH_TAG, "LowerPistonLimit").ToSingle(CFG_LowerPistonLimit);
+				UpperPistonLimit = CB_IniConfig.Get(SEARCH_TAG, "UpperPistonLimit").ToSingle(CFG_UpperPistonLimit);
 
 				string outString;
-				if (ini.Get(PistonTag, "Name").TryGetString(out outString))
+				if (CB_IniConfig.Get(PistonTag, "Name").TryGetString(out outString))
 				{
 					Name = outString;
 				} else
@@ -109,11 +107,11 @@ namespace IngameScript
 				});
 			}
 
-			public void Retract(float velocity)
+			public void Retract()
 			{
 				pistons.ForEach((p) =>
 				{
-					p.Velocity = velocity;
+					p.Velocity = CFG_RetractSpeed;
 					if (IsInverted)
 					{
 						p.Extend();
@@ -124,11 +122,11 @@ namespace IngameScript
 				});
 			}
 
-			public void Extend(float velocity)
+			public void Extend()
 			{
 				pistons.ForEach((p) =>
 				{
-					p.Velocity = velocity;
+					p.Velocity = CFG_DrillPushSpeed;
 					if (IsInverted)
 					{
 						p.Retract();
@@ -152,19 +150,19 @@ namespace IngameScript
 
 			public bool IsDrillingComplete()
 			{
-				var first = pistons[0];
+				var first = pistons.First();
 				return IsInverted ? first.CurrentPosition == 0.0f : first.CurrentPosition == first.MaxLimit;
 			}
 
 			public bool IsRetracted()
 			{
-				var first = pistons[0];
+				var first = pistons.First();
 				return IsInverted ? first.CurrentPosition == first.MaxLimit : first.CurrentPosition == 0.0f;
 			}
 
 			public float GetPrecentageComplete()
 			{
-				var first = pistons[0];
+				var first = pistons.First();
 				if (IsInverted)
 				{
 					return (first.MaxLimit - first.CurrentPosition) / first.MaxLimit;
@@ -195,7 +193,7 @@ namespace IngameScript
 
 			public string GetStatus()
 			{
-				var first = pistons[0];
+				var first = pistons.First();
 				return string.Format("{0} ({1})\n{2,5:F1}m {3,5:P0} - {4}", Name, pistons.Count, first.CurrentPosition, GetPrecentageComplete(), PistonDrillStatus());
 			}
 		}
