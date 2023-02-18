@@ -171,6 +171,17 @@ namespace IngameScript
 				return (first.MaxLimit - (first.MaxLimit - first.CurrentPosition)) / first.MaxLimit;
 			}
 
+			public float GetDepth()
+			{
+				var first = pistons.First();
+				if (IsInverted)
+				{
+					return (first.MaxLimit - first.CurrentPosition);
+				}
+
+				return first.CurrentPosition;
+			}
+
 			public string GetPrecentageCompleteFormatted()
 			{
 				return $"{GetPrecentageComplete():P0}";
@@ -194,7 +205,7 @@ namespace IngameScript
 			public string GetStatus()
 			{
 				var first = pistons.First();
-				return string.Format("{0} ({1})\n{2,5:F1}m {3,5:P0} - {4}", Name, pistons.Count, first.CurrentPosition, GetPrecentageComplete(), PistonDrillStatus());
+				return string.Format("({0}) {1,-8} {2,5:F1}m {3,5:P0} - {4}", pistons.Count, Name, first.CurrentPosition, GetPrecentageComplete(), PistonDrillStatus());
 			}
 		}
 	}

@@ -13,6 +13,11 @@
 DrillPushSpeed=0.025
 RetractSpeed=0.75
 AllDrills=false
+LowerPistonLimit=0.0
+UpperPistonLimit=10.0
+CargoFillPause=0.95
+CargoFillRestart=0.20
+MaxDepth=0.0
 
 [DeepDriller:0]
 Name=Set v1

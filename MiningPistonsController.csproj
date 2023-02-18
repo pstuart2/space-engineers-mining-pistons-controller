@@ -52,7 +52,6 @@
     <AdditionalFiles Include="Instructions.readme" />
     <AdditionalFiles Include="thumb.png" />
     <AdditionalFiles Include="MDK\whitelist.cache" />
-    <Compile Include="StateSerializer.cs" />
   </ItemGroup>
   <ItemGroup>
     <Content Include=".gitignore" />

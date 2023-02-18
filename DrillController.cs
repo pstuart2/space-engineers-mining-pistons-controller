@@ -37,6 +37,7 @@ namespace IngameScript
 
 			public void Refresh(IMyGridTerminalSystem grid)
 			{
+				drills.Clear();
 				grid.GetBlocksOfType(drills, ShouldTrackDrill);
 			}
 

@@ -32,6 +32,9 @@ namespace IngameScript
 		static float CFG_RetractSpeed = 0.75F;
 		static float CFG_UpperPistonLimit = 10.0f;
 		static float CFG_LowerPistonLimit = 0.0f;
+		static float CFG_CargoFillPause = 0.95f;
+		static float CFG_CargoFillRestart = 0.20f;
+		static float CFG_MaxDepth = 0.0f;
 
 		static bool CFG_AllDrills = false;
 
@@ -40,21 +43,32 @@ namespace IngameScript
 
 		static SortedDictionary<int, PistonGroup> pistonGroups = new SortedDictionary<int, PistonGroup>();
 		static List<IMyTextPanel> displayPanels = new List<IMyTextPanel>();
+		static List<IMyTerminalBlock> storage = new List<IMyTerminalBlock>();
 
 		static int SECONDS_BETWEEN_LOOP_COUNTER_RESET = 20;
 
 		DrillController drillController;
+
+		MyFixedPoint totalVolume = MyFixedPoint.Zero;
+		MyFixedPoint totalUsedVolume = MyFixedPoint.Zero;
+
+		float percentFull = 0.0f;
+		float totalDepth = 0.0f;
 
 		int loopCounter = 0;
 		int refreshLoopCount = 6 * SECONDS_BETWEEN_LOOP_COUNTER_RESET;
 
 		string[] statusString = { "/", "-", "\\", "|" };
 
-		enum State { Stopped, Starting, Drilling, Finishing, Retracting };
+		enum State { Stopped, Paused, Starting, Drilling, Finishing, Retracting };
 		State CurrentState = State.Stopped;
+
+		bool IsCommandRunning = false;
 
 		public Program()
 		{
+			Load();
+
 			drillController = new DrillController(Me);
 
 			LoadConfig();
@@ -65,11 +79,26 @@ namespace IngameScript
 
 		public void Save()
 		{
+			Storage = CurrentState.ToString();
+		}
+
+		public void Load()
+		{
+			if(string.IsNullOrWhiteSpace(Storage))
+			{
+				return;
+			}
+
+			CurrentState = (State)Enum.Parse(typeof(State), Storage, true);
 		}
 
 		public void Main(string argument, UpdateType updateSource)
 		{
-			RunCommands(argument, updateSource);
+			if(RunCommands(argument, updateSource) || IsCommandRunning)
+			{
+				return;
+			}
+
 			Update();
 			UpdateDisplays();
 			WriteControlText();
@@ -92,6 +121,9 @@ namespace IngameScript
 			CFG_RetractSpeed = CB_IniConfig.Get(SEARCH_TAG, "RetractSpeed").ToSingle(CFG_RetractSpeed);
 			CFG_LowerPistonLimit = CB_IniConfig.Get(SEARCH_TAG, "LowerPistonLimit").ToSingle(CFG_LowerPistonLimit);
 			CFG_UpperPistonLimit = CB_IniConfig.Get(SEARCH_TAG, "UpperPistonLimit").ToSingle(CFG_UpperPistonLimit);
+			CFG_CargoFillPause = CB_IniConfig.Get(SEARCH_TAG, "CargoFillPause").ToSingle(CFG_CargoFillPause);
+			CFG_CargoFillRestart = CB_IniConfig.Get(SEARCH_TAG, "CargoFillRestart").ToSingle(CFG_CargoFillRestart);
+			CFG_MaxDepth = CB_IniConfig.Get(SEARCH_TAG, "MaxDepth").ToSingle(CFG_MaxDepth);
 
 			CFG_AllDrills = CB_IniConfig.Get(SEARCH_TAG, "AllDrills").ToBoolean();
 		}
@@ -105,7 +137,12 @@ namespace IngameScript
 			}
 			
 			drillController.Refresh(GridTerminalSystem);
+
+			displayPanels.Clear();
 			GridTerminalSystem.GetBlocksOfType(displayPanels, ShouldTrack);
+
+			storage.Clear();
+			GridTerminalSystem.GetBlocksOfType(storage, ShouldTrackStorage);
 		}
 
 		private void GetPistonGroups()
@@ -131,27 +168,36 @@ namespace IngameScript
 				&& piston.IsFunctional
 				&& piston.CustomName.Contains($"[{SEARCH_TAG}.");
 		}
-		
+
+		private bool ShouldTrackStorage(IMyTerminalBlock entity)
+		{
+			return entity.IsSameConstructAs(Me)
+				&& entity.IsFunctional
+				&& entity.HasInventory
+				&& (entity.CustomName.Contains($"[{SEARCH_TAG}.INV]") || MyIni.HasSection(entity.CustomData, $"{SEARCH_TAG}.INV"));
+		}
+
 
 		private bool ShouldTrack(IMyFunctionalBlock block)
 		{
 			return block.IsSameConstructAs(Me)
 				&& block.IsFunctional
-				&& block.CustomName.Contains($"[{SEARCH_TAG}]");
+				&& (block.CustomName.Contains($"[{SEARCH_TAG}]") || MyIni.HasSection(block.CustomData, SEARCH_TAG));
 		}
 
-		private void RunCommands(string argument, UpdateType updateSource)
+		private bool RunCommands(string argument, UpdateType updateSource)
 		{
 			if (updateSource == UpdateType.Update10)
 			{
-				return;
+				return false;
 			}
 
-			switch(argument.ToLower())
+			IsCommandRunning = true;
+			switch (argument.ToLower())
 			{
 				case "rescan":
 					{
-						Stop();
+						//Stop();
 						LoadConfig();
 						ScanForBlocks();
 						break;
@@ -174,6 +220,9 @@ namespace IngameScript
 						break;
 					}
 			}
+
+			IsCommandRunning = false;
+			return true;
 		}
 
 		void ChangeState(State state)
@@ -199,16 +248,20 @@ namespace IngameScript
 		void Finish()
 		{
 			ChangeState(State.Finishing);
+			StopPistons();
 		}
 
 		void Stop()
 		{
 			ChangeState(State.Stopped);
-			foreach (var pg in pistonGroups.Values)
-			{
-				pg.Stop();
-			}
+			StopPistons();
+			drillController.TurnOff();
+		}
 
+		void Pause()
+		{
+			ChangeState(State.Paused);
+			StopPistons();
 			drillController.TurnOff();
 		}
 
@@ -223,14 +276,40 @@ namespace IngameScript
 			drillController.TurnOff();
 		}
 
+		void StopPistons()
+		{
+			foreach (var pg in pistonGroups.Values)
+			{
+				pg.Stop();
+			}
+		}
+
 		bool IsSecondsElapsed(int seconds)
 		{
 			return lastRunTime - stateStartTime >= TimeSpan.FromSeconds(seconds);
 		}
 
+		bool IsMaxDepthReached()
+		{
+			return CFG_MaxDepth > 0 && totalDepth >= CFG_MaxDepth;
+		}
+
+		bool IsMaxInventoryReached()
+		{
+			return percentFull >= CFG_CargoFillPause || percentFull >= 1.0f;
+		}
+
+		bool IsMinInventoryReached()
+		{
+			return percentFull <= CFG_CargoFillRestart;
+		}
+
 		void Update()
 		{
-			switch(CurrentState)
+			totalDepth = pistonGroups.Values.Sum((pg) => pg.GetDepth());
+			UpdateInventory();
+
+			switch (CurrentState)
 			{
 				case State.Starting:
 					{
@@ -257,9 +336,26 @@ namespace IngameScript
 							}
 						}
 
-						if (pistonGroups.Values.All((pg) => pg.IsDrillingComplete()))
+						if (IsMaxDepthReached() || pistonGroups.Values.All((pg) => pg.IsDrillingComplete()))
 						{
 							Finish();
+						} 
+						else
+						{
+							if(IsMaxInventoryReached())
+							{
+								Pause();
+							}
+						}
+
+						break;
+					}
+
+				case State.Paused:
+					{
+						if(IsMinInventoryReached())
+						{
+							Start();
 						}
 
 						break;
@@ -292,12 +388,31 @@ namespace IngameScript
 			return loopCounter % x == 0;
 		}
 
+		void UpdateInventory()
+		{
+			if (!OnlyExecuteEveryXLoops(12))
+			{
+				return;
+			}
+
+			totalVolume = MyFixedPoint.Zero;
+			totalUsedVolume = MyFixedPoint.Zero;
+
+			storage.ForEach((s) =>
+			{
+				var inventory = s.GetInventory();
+
+				totalVolume += inventory.MaxVolume;
+				totalUsedVolume += inventory.CurrentVolume;
+			});
+
+			percentFull = 1 - ((((float)totalVolume) - ((float)totalUsedVolume)) / ((float)totalVolume));
+		}
+
 		void UpdateDisplays()
 		{
-			StringBuilder sb = new StringBuilder($"Status: {CurrentState}");
-
-			sb.Append("\n\nDrills: ");
-			sb.Append(drillController.GetStateText());
+			StringBuilder sb = new StringBuilder(string.Format("Status: {0,12}     Drills: {1,10}     Storage Used: {2,10:P}     Drill Depth: {3:F1}\n",
+				CurrentState, drillController.GetStateText(), percentFull, totalDepth));
 
 			foreach (var pg in pistonGroups.Values)
 			{
@@ -319,6 +434,11 @@ namespace IngameScript
 			sb.Append($"\n\nPistonGroups: {pistonGroups.Count}");
 			sb.Append($"\nDrills: {drillController.Count}");
 			sb.Append($"\nDisplays: {displayPanels.Count}");
+			sb.Append($"\nStorage: {storage.Count}");
+			sb.Append($"\nCapacity: {totalVolume}");
+			sb.Append($"\nUsed: {totalUsedVolume}");
+
+			//sb.Append($"\n LCD Width: ${displayPanels[0].SurfaceSize.X}");
 
 			Echo(sb.ToString());
 		}
