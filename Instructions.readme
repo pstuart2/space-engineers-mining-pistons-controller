@@ -18,6 +18,8 @@ UpperPistonLimit=10.0
 CargoFillPause=0.95
 CargoFillRestart=0.20
 MaxDepth=0.0
+TurnOnEnginesAtBatteryThreshold=0.4
+TurnOffEngineAtBatteryThreshold=0.98
 
 [DeepDriller:0]
 Name=Set v1

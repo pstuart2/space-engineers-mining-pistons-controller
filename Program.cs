@@ -38,12 +38,17 @@ namespace IngameScript
 
 		static bool CFG_AllDrills = false;
 
+		static float CFG_TurnOnEnginesAtBatteryThreshold = 0.4f;
+		static float CFG_TurnOffEngineAtBatteryThreshold = 0.98f;
+
 		static DateTime lastRunTime = new DateTime();
 		static DateTime stateStartTime = new DateTime();
 
 		static SortedDictionary<int, PistonGroup> pistonGroups = new SortedDictionary<int, PistonGroup>();
 		static List<IMyTextPanel> displayPanels = new List<IMyTextPanel>();
 		static List<IMyTerminalBlock> storage = new List<IMyTerminalBlock>();
+		static List<IMyBatteryBlock> batteries = new List<IMyBatteryBlock>();
+		static List<IMyPowerProducer> engines = new List<IMyPowerProducer>();
 
 		static int SECONDS_BETWEEN_LOOP_COUNTER_RESET = 20;
 
@@ -54,6 +59,7 @@ namespace IngameScript
 
 		float percentFull = 0.0f;
 		float totalDepth = 0.0f;
+		float batteryPercent = 0.0f;
 
 		int loopCounter = 0;
 		int refreshLoopCount = 6 * SECONDS_BETWEEN_LOOP_COUNTER_RESET;
@@ -64,6 +70,7 @@ namespace IngameScript
 		State CurrentState = State.Stopped;
 
 		bool IsCommandRunning = false;
+		bool enginesOn = false;
 
 		public Program()
 		{
@@ -90,6 +97,8 @@ namespace IngameScript
 			}
 
 			CurrentState = (State)Enum.Parse(typeof(State), Storage, true);
+
+			
 		}
 
 		public void Main(string argument, UpdateType updateSource)
@@ -126,6 +135,9 @@ namespace IngameScript
 			CFG_MaxDepth = CB_IniConfig.Get(SEARCH_TAG, "MaxDepth").ToSingle(CFG_MaxDepth);
 
 			CFG_AllDrills = CB_IniConfig.Get(SEARCH_TAG, "AllDrills").ToBoolean();
+
+			CFG_TurnOnEnginesAtBatteryThreshold = CB_IniConfig.Get(SEARCH_TAG, "TurnOnEnginesAtBatteryThreshold").ToSingle(CFG_TurnOnEnginesAtBatteryThreshold);
+			CFG_TurnOffEngineAtBatteryThreshold = CB_IniConfig.Get(SEARCH_TAG, "TurnOffEngineAtBatteryThreshold").ToSingle(CFG_TurnOffEngineAtBatteryThreshold);
 		}
 
 		private void ScanForBlocks()
@@ -143,6 +155,11 @@ namespace IngameScript
 
 			storage.Clear();
 			GridTerminalSystem.GetBlocksOfType(storage, ShouldTrackStorage);
+
+			GridTerminalSystem.GetBlocksOfType(batteries);
+			GridTerminalSystem.GetBlocksOfType(engines, ShouldTrackEngine);
+
+			enginesOn = engines.Any((e) => e.Enabled);
 		}
 
 		private void GetPistonGroups()
@@ -183,6 +200,13 @@ namespace IngameScript
 			return block.IsSameConstructAs(Me)
 				&& block.IsFunctional
 				&& (block.CustomName.Contains($"[{SEARCH_TAG}]") || MyIni.HasSection(block.CustomData, SEARCH_TAG));
+		}
+
+		bool ShouldTrackEngine(IMyPowerProducer block)
+		{
+			return block.IsSameConstructAs(Me)
+				&& block.IsFunctional
+				&& (block.CustomName.Contains($"[{SEARCH_TAG}.Engine]") || MyIni.HasSection(block.CustomData, SEARCH_TAG));
 		}
 
 		private bool RunCommands(string argument, UpdateType updateSource)
@@ -233,7 +257,7 @@ namespace IngameScript
 
 		void Start()
 		{
-			if (CurrentState == State.Stopped)
+			if (CurrentState == State.Stopped || CurrentState == State.Paused)
 			{
 				ChangeState(State.Starting);
 				drillController.TurnOn();
@@ -308,6 +332,7 @@ namespace IngameScript
 		{
 			totalDepth = pistonGroups.Values.Sum((pg) => pg.GetDepth());
 			UpdateInventory();
+			UpdateBatteryState();
 
 			switch (CurrentState)
 			{
@@ -383,6 +408,50 @@ namespace IngameScript
 			}
 		}
 
+		void UpdateBatteryState()
+		{
+			if (!OnlyExecuteEveryXLoops(12))
+			{
+				return;
+			}
+
+			float maxStoredPower = 0.0f;
+			float currentStorePower = 0.0f;
+
+			foreach (var battery in batteries)
+			{
+				maxStoredPower += battery.MaxStoredPower;
+				currentStorePower += battery.CurrentStoredPower;
+			}
+
+			batteryPercent = 1 - ((maxStoredPower - currentStorePower) / maxStoredPower);
+
+			if (batteryPercent <= CFG_TurnOnEnginesAtBatteryThreshold)
+			{
+				TurnOnEngines();
+			}
+			else if (batteryPercent >= CFG_TurnOffEngineAtBatteryThreshold)
+			{
+				TurnOffEngines();
+			}
+		}
+
+		void TurnOnEngines()
+		{
+			Echo("Turn on...");
+			if (enginesOn) return;
+			enginesOn = true;
+			engines.ForEach((d) => d.ApplyAction("OnOff_On"));
+		}
+
+		void TurnOffEngines()
+		{
+			Echo("Turn off...");
+			if (!enginesOn) return;
+			enginesOn = false;
+			engines.ForEach((d) => d.ApplyAction("OnOff_Off"));
+		}
+
 		bool OnlyExecuteEveryXLoops(int x)
 		{
 			return loopCounter % x == 0;
@@ -438,7 +507,8 @@ namespace IngameScript
 			sb.Append($"\nCapacity: {totalVolume}");
 			sb.Append($"\nUsed: {totalUsedVolume}");
 
-			//sb.Append($"\n LCD Width: ${displayPanels[0].SurfaceSize.X}");
+			sb.AppendFormat("\nBattery Percent: {0:P}", batteryPercent);
+			sb.AppendFormat("\nEngines: {0} ({1})", engines.Count, enginesOn ? "On" : "Off");
 
 			Echo(sb.ToString());
 		}
