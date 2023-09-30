@@ -21,7 +21,7 @@ MaxDepth=0.0
 TurnOnEnginesAtBatteryThreshold=0.4
 TurnOffEngineAtBatteryThreshold=0.98
 
-[DeepDriller:0]
+[DeepDriller.0]
 Name=Set v1
 Inverted=true
 ```
@@ -31,5 +31,9 @@ Inverted=true
   * `[DeepDriller.<SequencePosition>]`
 * Multiple pistons can be added with the same sequence positon and they will be controlled together
 
-## Drills
-`[DeepDriller]`
+# Drills
+* Add the tag to the name `[DeepDriller]` or...
+* Set `AllDrills=true`
+
+# Displays
+* Add the `[DeepDriller]` tag to the name or in CustomData

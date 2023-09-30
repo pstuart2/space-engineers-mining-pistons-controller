@@ -151,12 +151,12 @@ namespace IngameScript
 			drillController.Refresh(GridTerminalSystem);
 
 			displayPanels.Clear();
-			GridTerminalSystem.GetBlocksOfType(displayPanels, ShouldTrack);
+			GridTerminalSystem.GetBlocksOfType(displayPanels, ShouldTrackDispalyPanels);
 
 			storage.Clear();
 			GridTerminalSystem.GetBlocksOfType(storage, ShouldTrackStorage);
 
-			GridTerminalSystem.GetBlocksOfType(batteries);
+			GridTerminalSystem.GetBlocksOfType(batteries, ShouldTrackBatteries);
 			GridTerminalSystem.GetBlocksOfType(engines, ShouldTrackEngine);
 
 			enginesOn = engines.Any((e) => e.Enabled);
@@ -194,12 +194,18 @@ namespace IngameScript
 				&& (entity.CustomName.Contains($"[{SEARCH_TAG}.INV]") || MyIni.HasSection(entity.CustomData, $"{SEARCH_TAG}.INV"));
 		}
 
-
-		private bool ShouldTrack(IMyFunctionalBlock block)
+		private bool ShouldTrackDispalyPanels(IMyTextPanel block)
 		{
-			return block.IsSameConstructAs(Me)
+			var shouldTrack = block.IsSameConstructAs(Me)
 				&& block.IsFunctional
 				&& (block.CustomName.Contains($"[{SEARCH_TAG}]") || MyIni.HasSection(block.CustomData, SEARCH_TAG));
+
+			if(shouldTrack)
+			{
+				block.ContentType = ContentType.TEXT_AND_IMAGE;
+			}
+
+			return shouldTrack;
 		}
 
 		bool ShouldTrackEngine(IMyPowerProducer block)
@@ -207,6 +213,12 @@ namespace IngameScript
 			return block.IsSameConstructAs(Me)
 				&& block.IsFunctional
 				&& (block.CustomName.Contains($"[{SEARCH_TAG}.Engine]") || MyIni.HasSection(block.CustomData, SEARCH_TAG));
+		}
+
+		bool ShouldTrackBatteries(IMyBatteryBlock block)
+		{
+			return block.IsSameConstructAs(Me)
+				&& block.IsFunctional;
 		}
 
 		private bool RunCommands(string argument, UpdateType updateSource)
@@ -438,16 +450,16 @@ namespace IngameScript
 
 		void TurnOnEngines()
 		{
-			Echo("Turn on...");
 			if (enginesOn) return;
+			Echo("Turn on...");
 			enginesOn = true;
 			engines.ForEach((d) => d.ApplyAction("OnOff_On"));
 		}
 
 		void TurnOffEngines()
 		{
-			Echo("Turn off...");
 			if (!enginesOn) return;
+			Echo("Turn off...");
 			enginesOn = false;
 			engines.ForEach((d) => d.ApplyAction("OnOff_Off"));
 		}
