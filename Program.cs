@@ -37,6 +37,7 @@ namespace IngameScript
 		static float CFG_MaxDepth = 0.0f;
 
 		static bool CFG_AllDrills = false;
+		static bool CFG_TrackBatteries = false;
 
 		static float CFG_TurnOnEnginesAtBatteryThreshold = 0.4f;
 		static float CFG_TurnOffEngineAtBatteryThreshold = 0.98f;
@@ -135,6 +136,7 @@ namespace IngameScript
 			CFG_MaxDepth = CB_IniConfig.Get(SEARCH_TAG, "MaxDepth").ToSingle(CFG_MaxDepth);
 
 			CFG_AllDrills = CB_IniConfig.Get(SEARCH_TAG, "AllDrills").ToBoolean();
+			CFG_TrackBatteries = CB_IniConfig.Get(SEARCH_TAG, "TrackBatteries").ToBoolean();
 
 			CFG_TurnOnEnginesAtBatteryThreshold = CB_IniConfig.Get(SEARCH_TAG, "TurnOnEnginesAtBatteryThreshold").ToSingle(CFG_TurnOnEnginesAtBatteryThreshold);
 			CFG_TurnOffEngineAtBatteryThreshold = CB_IniConfig.Get(SEARCH_TAG, "TurnOffEngineAtBatteryThreshold").ToSingle(CFG_TurnOffEngineAtBatteryThreshold);
@@ -191,7 +193,7 @@ namespace IngameScript
 			return entity.IsSameConstructAs(Me)
 				&& entity.IsFunctional
 				&& entity.HasInventory
-				&& (entity.CustomName.Contains($"[{SEARCH_TAG}.INV]") || MyIni.HasSection(entity.CustomData, $"{SEARCH_TAG}.INV"));
+				&& (entity.CustomName.Contains($"[{SEARCH_TAG}.INV]") || MyIni.HasSection(entity.CustomData, $"[{SEARCH_TAG}.INV]"));
 		}
 
 		private bool ShouldTrackDispalyPanels(IMyTextPanel block)
@@ -212,12 +214,13 @@ namespace IngameScript
 		{
 			return block.IsSameConstructAs(Me)
 				&& block.IsFunctional
-				&& (block.CustomName.Contains($"[{SEARCH_TAG}.Engine]") || MyIni.HasSection(block.CustomData, SEARCH_TAG));
+				&& (block.CustomName.Contains($"[{SEARCH_TAG}.Engine]") || MyIni.HasSection(block.CustomData, $"[{SEARCH_TAG}.Engine]"));
 		}
 
 		bool ShouldTrackBatteries(IMyBatteryBlock block)
 		{
-			return block.IsSameConstructAs(Me)
+			return CFG_TrackBatteries
+				&& block.IsSameConstructAs(Me)
 				&& block.IsFunctional;
 		}
 
@@ -422,7 +425,7 @@ namespace IngameScript
 
 		void UpdateBatteryState()
 		{
-			if (!OnlyExecuteEveryXLoops(12))
+			if (!CFG_TrackBatteries || !OnlyExecuteEveryXLoops(12))
 			{
 				return;
 			}
@@ -492,8 +495,15 @@ namespace IngameScript
 
 		void UpdateDisplays()
 		{
-			StringBuilder sb = new StringBuilder(string.Format("Status: {0,12}     Drills: {1,10}     Storage Used: {2,10:P}     Drill Depth: {3:F1}\n",
-				CurrentState, drillController.GetStateText(), percentFull, totalDepth));
+			StringBuilder sb = new StringBuilder(string.Format("Status: {0,12}     Drills: {1,10}",
+				CurrentState, drillController.GetStateText()));
+
+			if(storage.Count > 0)
+			{
+				sb.AppendFormat("     Storage Used: {0,10:P}", percentFull);
+			}
+
+			sb.AppendFormat("     Drill Depth: {0:F1}\n", totalDepth);
 
 			foreach (var pg in pistonGroups.Values)
 			{
@@ -519,8 +529,12 @@ namespace IngameScript
 			sb.Append($"\nCapacity: {totalVolume}");
 			sb.Append($"\nUsed: {totalUsedVolume}");
 
-			sb.AppendFormat("\nBattery Percent: {0:P}", batteryPercent);
-			sb.AppendFormat("\nEngines: {0} ({1})", engines.Count, enginesOn ? "On" : "Off");
+			if (CFG_TrackBatteries)
+			{
+				sb.AppendFormat("\nBattery Percent: {0:P}", batteryPercent);
+				sb.AppendFormat("\nEngines: {0} ({1})", engines.Count, enginesOn ? "On" : "Off");
+			}
+			
 
 			Echo(sb.ToString());
 		}

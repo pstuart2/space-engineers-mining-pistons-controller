@@ -18,6 +18,7 @@ UpperPistonLimit=10.0
 CargoFillPause=0.95
 CargoFillRestart=0.20
 MaxDepth=0.0
+TrackBatteries=true
 TurnOnEnginesAtBatteryThreshold=0.4
 TurnOffEngineAtBatteryThreshold=0.98
 
@@ -37,3 +38,9 @@ Inverted=true
 
 # Displays
 * Add the `[DeepDriller]` tag to the name or in CustomData
+
+# Inventory
+* Add `[DeepDriller.INV]` tag to the name or in CustomData
+
+# Engines
+* Add `[DeepDriller.Engine]` tag to the name or in CustomData
